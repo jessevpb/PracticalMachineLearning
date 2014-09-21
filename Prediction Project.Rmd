@@ -1,0 +1,98 @@
+---
+title: "Prediction Models Project"
+output: html_document
+---
+
+## Initial Data Cleaning
+
+First things first we download and read in the data.
+
+```{r, echo = FALSE}
+training <- read.csv("training.csv")
+install.packages("caret", repos = "http://cran.rstudio.com/")
+install.packages("randomForest", repos = "http://cran.rstudio.com/")
+library(randomForest)
+library(caret)
+```
+
+We then set the seed for reproducibility and partition the training set so we can have a training and test set.
+
+```{r}
+set.seed(12345)
+
+inTrain <- createDataPartition(y = training$classe, p = .6, list = FALSE)
+
+training2 <- training[inTrain,]
+
+testing <- training[-inTrain,]
+
+head(str(training2))
+```
+
+Taking a look at the data, we notice there are many variables that will not be helpful. Many columns are almost completely filled with NAs, while others have unhelpful entries like #DIV/0. We'll do some cleanup so our data set is easier to work with.
+
+```{r, echo = FALSE}
+complete.training <- training2[, !is.na(training[1,])]
+
+complete.training <- complete.training[,sapply(complete.training, function(x) is.numeric(x))]
+
+complete.training <- cbind(complete.training, training2$classe)
+colnames(complete.training)[57] <- "classe"
+
+
+cleanTest <- testing[, !is.na(testing[1,])]
+
+cleanTest <- cleanTest[,sapply(cleanTest, function(x) is.numeric(x))]
+
+cleanTest <- cbind(cleanTest, testing$classe)
+colnames(cleanTest)[57] <- "classe"
+```
+
+
+## First Model
+
+The data set is not very user-friendly. Unlike data on wages, little is known about what variables might affect correct arm curl form. Thus, we are stuck taking a stab in the dark. Let's use principal components as a starting point.
+
+```{r}
+preComp <- preProcess(complete.training[,-57], method = "pca", pcaComp = 2)
+
+curlPC <- predict(preComp, complete.training[,-57])
+
+plot(curlPC[,1],curlPC[,2], col = complete.training$classe)
+```
+
+While this initial analysis seems to have grouped the variables into five fairly distinct blobs, there seems to be little correlation with our variable of interest.
+
+After other efforts, I eventually trying a Random Forest approach yielded good results.
+
+```{r}
+rfmod <- randomForest(classe ~ ., data = complete.training)
+
+rfmod$confusion
+
+confusionMatrix(testing$classe, predict(rfmod,testing))
+```
+
+Obviously with 100% accuracy something fishy is going on here. Also odd that the testing set had higher accuracy than training. Unfortunately I was not able to figure out what was happening behind the scenes. While this seems to be a highly accurate (if overfitted) model, running it against the official testing set does not produce credible results.
+
+##Conclusion
+
+```{r, echo = FALSE}
+testing2 <- read.csv("testing.csv")
+testingFinal <- testing2[, !is.na(testing2[1,])]
+
+testingFinal <- testingFinal[,sapply(testingFinal, function(x) is.numeric(x))]
+
+```
+
+```{r}
+answers = predict(rfmod, testingFinal)
+
+answers
+```
+
+Obviously these results are not very useful. While the user-created testing data set had an error rate of 0, this suggests the error rate is likely 72%.
+
+```{r}
+1-sum(training$classe == "A")/length(training$classe)
+```
